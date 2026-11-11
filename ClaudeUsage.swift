@@ -54,7 +54,33 @@ func fmtReset(_ d: Date?) -> String {
     return "reset dans \(rel) (\(f.string(from: d)))"
 }
 
-func color(_ p: Double) -> NSColor { p >= 90 ? .systemRed : p >= 70 ? .systemOrange : .labelColor }
+// Same steps as the notification thresholds: <50 green, 50-80 yellow, 80-90 orange, >=90 red.
+func color(_ p: Double) -> NSColor { p >= 90 ? .systemRed : p >= 80 ? .systemOrange : p >= 50 ? .systemYellow : NSColor(srgbRed: 0.10, green: 0.47, blue: 0.25, alpha: 1) }
+func titleColor(_ p: Double) -> NSColor { p >= 80 ? color(p) : .labelColor }
+
+class BarView: NSView {
+    let title: String, pct: Double, sub: String
+    init(title: String, pct: Double, sub: String) {
+        self.title = title; self.pct = pct; self.sub = sub
+        super.init(frame: NSRect(x: 0, y: 0, width: 250, height: 52))
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    override func draw(_ r: NSRect) {
+        let pad: CGFloat = 14
+        NSAttributedString(string: title, attributes: [.font: NSFont.boldSystemFont(ofSize: 13), .foregroundColor: NSColor.labelColor]).draw(at: NSPoint(x: pad, y: 33))
+        let v = NSAttributedString(string: "\(Int(pct.rounded())) %", attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 13, weight: .semibold), .foregroundColor: pct >= 90 ? color(pct) : NSColor.labelColor])
+        v.draw(at: NSPoint(x: bounds.width - pad - v.size().width, y: 33))
+        let track = NSRect(x: pad, y: 22, width: bounds.width - 2 * pad, height: 6)
+        NSColor.labelColor.withAlphaComponent(0.15).setFill()
+        NSBezierPath(roundedRect: track, xRadius: 3, yRadius: 3).fill()
+        if pct > 0 {
+            var f = track; f.size.width = max(6, track.width * CGFloat(min(pct, 100)) / 100)
+            color(pct).setFill()
+            NSBezierPath(roundedRect: f, xRadius: 3, yRadius: 3).fill()
+        }
+        NSAttributedString(string: sub, attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.labelColor.withAlphaComponent(0.8)]).draw(at: NSPoint(x: pad, y: 5))
+    }
+}
 
 let thresholds: [Double] = [50, 80, 90, 95]
 
@@ -102,7 +128,7 @@ class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
         let b = item.button!
         if let w = usage?.week {
             let t = NSMutableAttributedString(string: "7j ", attributes: [.font: NSFont.menuBarFont(ofSize: 0)])
-            t.append(NSAttributedString(string: "\(Int(w.pct.rounded()))%", attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .medium), .foregroundColor: color(w.pct)]))
+            t.append(NSAttributedString(string: "\(Int(w.pct.rounded()))%", attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .medium), .foregroundColor: titleColor(w.pct)]))
             b.attributedTitle = t
         } else { b.title = error == nil ? "7j …" : "7j ⚠︎" }
 
@@ -114,8 +140,11 @@ class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
             m.addItem(i)
         }
         add("Claude — Usage"); m.addItem(.separator())
-        if let w = usage?.week { add("Semaine : \(Int(w.pct.rounded()))%", bold: true); add(fmtReset(w.reset)) }
-        if let s = usage?.session { m.addItem(.separator()); add("Session 5 h : \(Int(s.pct.rounded()))%"); add(fmtReset(s.reset)) }
+        func bar(_ t: String, _ b: Bucket) {
+            let i = NSMenuItem(); i.view = BarView(title: t, pct: b.pct, sub: fmtReset(b.reset)); m.addItem(i)
+        }
+        if let w = usage?.week { bar("Semaine", w) }
+        if let s = usage?.session { m.addItem(.separator()); bar("Session 5 h", s) }
         if let e = error { m.addItem(.separator()); add("⚠︎ \(e)") }
         if let u = updated { let f = DateFormatter(); f.timeStyle = .short; m.addItem(.separator()); add("Mis à jour à \(f.string(from: u))") }
         m.addItem(.separator())
