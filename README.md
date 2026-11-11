@@ -4,7 +4,7 @@ Petite app macOS (Swift, un seul fichier, sans dépendance) qui affiche dans la 
 
 - Dans la barre de menu : `7j 42%` (orange à partir de 80 %, rouge à partir de 90 %).
 - Au clic : une barre de progression par limite, colorée selon le niveau (vert < 50 %, jaune < 80 %, orange < 90 %, rouge ≥ 90 %), et le temps restant avant le reset.
-- Notifications macOS à **50 %, 80 %, 90 % et 95 %**, pour la limite hebdo et pour la session de 5 h (une alerte par seuil et par période).
+- Notifications macOS pour la limite hebdo et pour la session de 5 h (une alerte par seuil et par période). Les seuils (50, 80, 90, 95 %) se cochent dans le menu **Alertes de notification** ; 80, 90 et 95 % sont activés par défaut.
 - Rafraîchissement toutes les 5 minutes et au réveil du Mac.
 
 ## Prérequis

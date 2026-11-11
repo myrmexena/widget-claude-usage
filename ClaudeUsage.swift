@@ -82,13 +82,20 @@ class BarView: NSView {
     }
 }
 
-let thresholds: [Double] = [50, 80, 90, 95]
+let allThresholds: [Int] = [50, 80, 90, 95]
+let defaultThresholds: [Int] = [80, 90, 95]
+
+func enabledThresholds() -> [Double] {
+    let on = (UserDefaults.standard.array(forKey: "enabledThresholds") as? [Int]) ?? defaultThresholds
+    return allThresholds.filter(on.contains).map(Double.init)
+}
 
 class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     var usage: Usage?; var error: String?; var updated: Date?
 
     func applicationDidFinishLaunching(_ n: Notification) {
+        UserDefaults.standard.register(defaults: ["enabledThresholds": defaultThresholds])
         let nc = UNUserNotificationCenter.current()
         nc.delegate = self
         nc.requestAuthorization(options: [.alert, .sound]) { _, _ in }
@@ -102,7 +109,7 @@ class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     // One alert per threshold per reset period; if several are crossed at once, only the highest fires.
     func checkAlerts(_ u: Usage) {
         for (name, label, b) in [("week", "hebdomadaire", u.week), ("session", "de la session 5 h", u.session)] {
-            guard let b = b, let t = thresholds.last(where: { b.pct >= $0 }) else { continue }
+            guard let b = b, let t = enabledThresholds().last(where: { b.pct >= $0 }) else { continue }
             let period = b.reset.map { String(Int(($0.timeIntervalSince1970 / 60).rounded())) } ?? "none"
             let key = "alert.\(name).\(period)"
             if Double(UserDefaults.standard.integer(forKey: key)) >= t { continue }
@@ -113,6 +120,13 @@ class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
             c.sound = .default
             UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: key + ".\(Int(t))", content: c, trigger: nil))
         }
+    }
+
+    @objc func toggleThreshold(_ sender: NSMenuItem) {
+        var on = (UserDefaults.standard.array(forKey: "enabledThresholds") as? [Int]) ?? defaultThresholds
+        if let i = on.firstIndex(of: sender.tag) { on.remove(at: i) } else { on.append(sender.tag) }
+        UserDefaults.standard.set(on, forKey: "enabledThresholds")
+        render()
     }
 
     @objc func noop() {}
@@ -148,6 +162,15 @@ class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
         if let e = error { m.addItem(.separator()); add("⚠︎ \(e)") }
         if let u = updated { let f = DateFormatter(); f.timeStyle = .short; m.addItem(.separator()); add("Mis à jour à \(f.string(from: u))") }
         m.addItem(.separator())
+        let alerts = NSMenuItem(title: "Alertes de notification", action: nil, keyEquivalent: "")
+        let sub = NSMenu()
+        let on = enabledThresholds().map { Int($0) }
+        for t in allThresholds {
+            let i = NSMenuItem(title: "à \(t) %", action: #selector(toggleThreshold(_:)), keyEquivalent: "")
+            i.target = self; i.tag = t; i.state = on.contains(t) ? .on : .off
+            sub.addItem(i)
+        }
+        alerts.submenu = sub; m.addItem(alerts)
         let r = NSMenuItem(title: "Actualiser", action: #selector(refresh), keyEquivalent: "r"); r.target = self; m.addItem(r)
         m.addItem(NSMenuItem(title: "Quitter", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         item.menu = m
