@@ -82,12 +82,14 @@ class App: NSObject, NSApplicationDelegate {
             b.attributedTitle = t
         } else { b.title = error == nil ? "7j …" : "7j ⚠︎" }
 
+        b.toolTip = "Usage Claude (limite hebdomadaire)"
         let m = NSMenu()
         func add(_ s: String, bold: Bool = false) {
             let i = NSMenuItem(title: s, action: #selector(noop), keyEquivalent: ""); i.target = self
             if bold { i.attributedTitle = NSAttributedString(string: s, attributes: [.font: NSFont.boldSystemFont(ofSize: 13)]) }
             m.addItem(i)
         }
+        add("Claude — Usage"); m.addItem(.separator())
         if let w = usage?.week { add("Semaine : \(Int(w.pct.rounded()))%", bold: true); add(fmtReset(w.reset)) }
         if let s = usage?.session { m.addItem(.separator()); add("Session 5 h : \(Int(s.pct.rounded()))%"); add(fmtReset(s.reset)) }
         if let e = error { m.addItem(.separator()); add("⚠︎ \(e)") }
