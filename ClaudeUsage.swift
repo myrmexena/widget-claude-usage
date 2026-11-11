@@ -1,4 +1,5 @@
 import Cocoa
+import UserNotifications
 
 struct Bucket { let pct: Double; let reset: Date? }
 struct Usage { let week: Bucket?; let session: Bucket? }
@@ -55,21 +56,44 @@ func fmtReset(_ d: Date?) -> String {
 
 func color(_ p: Double) -> NSColor { p >= 90 ? .systemRed : p >= 70 ? .systemOrange : .labelColor }
 
-class App: NSObject, NSApplicationDelegate {
+let thresholds: [Double] = [50, 80, 90, 95]
+
+class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     var usage: Usage?; var error: String?; var updated: Date?
 
     func applicationDidFinishLaunching(_ n: Notification) {
+        let nc = UNUserNotificationCenter.current()
+        nc.delegate = self
+        nc.requestAuthorization(options: [.alert, .sound]) { _, _ in }
         render(); refresh()
         Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { _ in self.refresh() }
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { _ in self.refresh() }
+    }
+
+    func userNotificationCenter(_ c: UNUserNotificationCenter, willPresent n: UNNotification, withCompletionHandler h: @escaping (UNNotificationPresentationOptions) -> Void) { h([.banner, .sound]) }
+
+    // One alert per threshold per reset period; if several are crossed at once, only the highest fires.
+    func checkAlerts(_ u: Usage) {
+        for (name, label, b) in [("week", "hebdomadaire", u.week), ("session", "de la session 5 h", u.session)] {
+            guard let b = b, let t = thresholds.last(where: { b.pct >= $0 }) else { continue }
+            let period = b.reset.map { String(Int(($0.timeIntervalSince1970 / 60).rounded())) } ?? "none"
+            let key = "alert.\(name).\(period)"
+            if Double(UserDefaults.standard.integer(forKey: key)) >= t { continue }
+            UserDefaults.standard.set(Int(t), forKey: key)
+            let c = UNMutableNotificationContent()
+            c.title = "Claude — limite \(label) à \(Int(t)) %"
+            c.body = "Usage actuel : \(Int(b.pct.rounded())) %, \(fmtReset(b.reset))"
+            c.sound = .default
+            UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: key + ".\(Int(t))", content: c, trigger: nil))
+        }
     }
 
     @objc func noop() {}
 
     @objc func refresh() {
         fetch { u, e in DispatchQueue.main.async {
-            if let u = u { self.usage = u; self.error = nil; self.updated = Date() } else { self.error = e }
+            if let u = u { self.usage = u; self.error = nil; self.updated = Date(); self.checkAlerts(u) } else { self.error = e }
             self.render()
         } }
     }
